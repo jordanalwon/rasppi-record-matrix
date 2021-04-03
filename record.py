@@ -13,138 +13,234 @@ from threading import Thread
 import pyaudio
 import wave
 import os
+from math import pi, cos
 
-def init_pins():
-    pins = [8,10,12]
+class Recorder():
+    def __init__(self,
+                filename='recording',
+                record_length=5,
+                sample_rate=16000,
+                debug_mode=[]):
 
-    for pin in pins:
-        gpio.setMode(pin,0) # 0 = input, 1 = output
-        gpio.setFunction(pin,0) # 0 = digital, 1 = pwm
+        self.filename = filename
+        self.record_length = record_length
+        self.sample_rate = sample_rate
+        self.debug_mode = debug_mode
 
-def set_static_color(color):
-    led.set(color)
+        self._init_pins()
 
-def set_decreasing_steps_color(color,time):
-    step_time = time / led.length
-    
-    diodes = [color] * led.length
-    led.set(diodes)
-    for diode, _ in enumerate(diodes):
-        sleep(step_time)
-        diodes[diode] = 'black'
-        led.set(diodes)
+    def _init_pins(self):
+        # Initalize button pin connection
+        pins = [8,10,12]
 
-def get_pressed_button(stop_var=True):
-    # loop until push button press and return button number
-    while stop_var:
-        # button 0 (front left)
-        if gpio.getDigital(10):
-            print('Button 0 pressed')
-            return 0
+        for pin in pins:
+            gpio.setMode(pin,0) # 0 = input, 1 = output
+            gpio.setFunction(pin,0) # 0 = digital, 1 = pwm
 
-        # button 1 (front right)
-        if gpio.getDigital(8):
-            print('Button 1 pressed')
-            return 1
+    def _init_flash_memory(self):
+        # Initalize the USB memory and update the file directory 
+        pass
 
-        # button 2 (side)
-        if gpio.getDigital(12):
-            print('Button 2 pressed')
-            return 2
+    def activate(self):
+        # Loop operation procedure
+        # while True:
+        self.mode_standby()
 
-def state_standby():
-    # set LED color to green
-    set_static_color('green')
-    
-    return get_pressed_button()
-    
+        self._set_color_static('black')
 
-def state_shutdown():
-    t = Thread(target=set_decreasing_steps_color, args=('red',10,))
-    t.start()
+    def mode_standby(self):
+        # Standby: Waiting for button input
+        self.set_static_color('green')
 
-    sleep(1)
-    boo = True
-    while boo:
-        boo = t.is_alive()
+        pressed_button = self._get_button_input()
 
-        # button 0 (front left)
-        if gpio.getDigital(10):
-            boo = False
-            print('Button 0 pressed')
-            button = 0
+        if pressed_button == 0:
+            self.mode_shutdown()
 
-        # button 1 (front right)
-        if gpio.getDigital(8):
-            boo = False
-            print('Button 1 pressed')
-            button = 1
+        elif pressed_button == 1:
+            print("Recording")
+            self.mode_record()
 
-        # button 2 (side)
-        if gpio.getDigital(12):
-            boo = False
-            print('Button 2 pressed')
-            button = 2
+        elif pressed_button == 2:
+            print("No Function")# Add Reboot key
+        else:
+            raise KeyError
+
+    def mode_shutdown(self):
+        # Shutdown progress. 
+        t = Thread(target=self._set_color_decreasing_steps, args=('red',10,))
+        t.start()
+
+        sleep(1)
+        boo = True
+        while boo:
+            boo = t.is_alive()
+
+            # button 0 (front left)
+            if gpio.getDigital(10):
+                boo = False
+                print('Button 0 pressed')
+                button = 0
+                # Shutdown pi function
+
+            # button 1 (front right)
+            if gpio.getDigital(8):
+                boo = False
+                print('Button 1 pressed')
+                button = 1
+                # Stop Shutdown process
+
+            # button 2 (side)
+            if gpio.getDigital(12):
+                boo = False
+                print('Button 2 pressed')
+                button = 2
+                # Stop Python script
+            
+        if button == None:
+            # Shutdown pi function
+            print('test')
+
+    def mode_record(self):
+        # Build record progress
+        self._set_color_windmill_transition(color=(0,0,255,0))
         
-    if button == None:
-        print('test')
+        t = Thread(target=self._set_color_pulsating, args=('blue', self.record_length+0.5,))
+        t.start()
 
-def record():
-    # recording configs
-    CHUNK = 2048
-    FORMAT = pyaudio.paInt16
-    CHANNELS = 8
-    RATE = 32000
-    RECORD_SECONDS = 5
-    WAVE_OUTPUT_FILENAME = "output.wav"
+        self._record_audio()
 
-    # create & configure microphone
-    mic = pyaudio.PyAudio()
-    stream = mic.open(format=FORMAT,
-                    channels=CHANNELS,
-                    rate=RATE,
-                    input=True,
-                    frames_per_buffer=CHUNK)
 
-    print("* recording")
+    def _set_color_static(self, color):
+        led.set(color)
 
-    # read & store microphone data per frame read
-    frames = []
-    for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
-        data = stream.read(CHUNK)
-        frames.append(data)
+    def _set_color_pulsating(self,color,time):
+        pass
 
-    print("* done recording")
+    def _set_color_decreasing_steps(self,color,time):
+        #
+        step_time = time / led.length
+        
+        diodes = [color] * led.length
+        led.set(diodes)
+        for diode, _ in enumerate(diodes):
+            sleep(step_time)
+            diodes[diode] = 'black'
+            led.set(diodes)
 
-    # kill the mic and recording
-    stream.stop_stream()
-    stream.close()
-    mic.terminate()
+    def _set_color_windmill_transition(self, color):
+        def linear_gradient(x, shift=0):
+            y = (x-shift)/100
+            if y < 0:
+                y = 0
+            elif y > 1:
+                y = 1
+            
+            return y
 
-    # combine & store all microphone data to output.wav file
-    outputFile = wave.open(WAVE_OUTPUT_FILENAME, 'wb')
-    outputFile.setnchannels(CHANNELS)
-    outputFile.setsampwidth(mic.get_sample_size(FORMAT))
-    outputFile.setframerate(RATE)
-    outputFile.writeframes(b''.join(frames))
-    outputFile.close()
+        direction = ['fill','drain']
+        
+        diodes = ['black'] * led.length
+        for step in range(60):
+            sleep(1/60)
 
-init_pins()
+            g_1 = linear_gradient(step,0)
+            g_2 = linear_gradient(step,10)
+            g_3 = linear_gradient(step,20)
+            g_4 = linear_gradient(step,30)
+            g_5 = linear_gradient(step,40)
 
-# while True:
-pushed_button = state_standby()
+            c_1 = (int(g_1*color[0]), int(g_1*color[1]), int(g_1*color[2]), int(g_1*color[3]))
+            c_2 = (int(g_2*color[0]), int(g_2*color[1]), int(g_2*color[2]), int(g_2*color[3]))
+            c_3 = (int(g_3*color[0]), int(g_3*color[1]), int(g_3*color[2]), int(g_3*color[3]))
+            c_4 = (int(g_4*color[0]), int(g_4*color[1]), int(g_4*color[2]), int(g_4*color[3]))
+            c_5 = (int(g_5*color[0]), int(g_5*color[1]), int(g_5*color[2]), int(g_5*color[3]))
 
-if pushed_button == 0:
-    state_shutdown()
+            diodes[0] = c_1
+            diodes[5] = c_1
+            diodes[9] = c_1
+            diodes[14] = c_1
 
-elif pushed_button == 1:
-    print("Recording")
-    record()
+            diodes[1] = c_2
+            diodes[6] = c_2
+            diodes[10] = c_2
+            diodes[15] = c_2
 
-elif pushed_button == 2:
-    print("No Function")# Add Reboot key
-else:
-    raise KeyError
+            diodes[2] = c_3
+            diodes[7] = c_3
+            diodes[11] = c_3
+            diodes[16] = c_3
+            
+            diodes[3] = c_4
+            diodes[8] = c_4
+            diodes[12] = c_4
+            diodes[17] = c_4
 
-set_static_color('black')
-    
+            diodes[4] = c_5
+            diodes[13] = c_5
+            
+            print(diodes)
+            led.set(diodes)
+
+    def _get_button_input(self):
+        # loop until push button press and return button number
+        while True:
+            # button 0 (front left)
+            if gpio.getDigital(10):
+                print('Button 0 pressed')
+                return 0
+
+            # button 1 (front right)
+            if gpio.getDigital(8):
+                print('Button 1 pressed')
+                return 1
+
+            # button 2 (side)
+            if gpio.getDigital(12):
+                print('Button 2 pressed')
+                return 2
+
+    def _set_filename_number(self):
+        pass
+
+    def _record_audio(self):
+        # recording configs
+        chunk = 2048
+        format = pyaudio.paInt16
+        channels = 8
+        self.sample_rate
+        self.record_length
+
+        self._set_filename_number()
+
+        # create & configure microphone
+        mic = pyaudio.PyAudio()
+        stream = mic.open(format=format,
+                        channels=channels,
+                        rate=self.sample_rate,
+                        input=True,
+                        frames_per_buffer=chunk)
+
+        # read & store microphone data per frame read
+        frames = []
+        for i in range(0, int(self.sample_rate / chunk * self.record_length)):
+            data = stream.read(chunk)
+            frames.append(data)
+
+        stream.stop_stream()
+        stream.close()
+        mic.terminate()
+
+        outputFile = wave.open(self.filename, 'wb')
+        outputFile.setnchannels(channels)
+        outputFile.setsampwidth(mic.get_sample_size(format))
+        outputFile.setframerate(self.sample_rate)
+        outputFile.writeframes(b''.join(frames))
+        outputFile.close()
+
+if __name__ == "__main__":
+    r = Recorder()
+    # r.activate()
+    r._set_color_windmill_transition((0,0,255,0))
+    r._set_color_static('black')
+        
