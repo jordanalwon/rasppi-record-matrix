@@ -28,6 +28,10 @@ class Recorder():
         self.debug_mode = debug_mode
 
         self.path = os.path.join(os.path.dirname(os.path.realpath(__file__)),'Recordings')
+        self.loop = True
+
+        if not os.path.isdir(self.path):
+            os.mkdir(self.path)
 
         self._init_pins()
 
@@ -45,8 +49,8 @@ class Recorder():
 
     def activate(self):
         # Loop operation procedure
-        # while True:
-        self.mode_standby()
+        while self.loop:
+            self.mode_standby()
 
         self._set_color_static('black')
 
@@ -82,36 +86,36 @@ class Recorder():
             if gpio.getDigital(10):
                 boo = False
                 print('Button 0 pressed')
-                button = 0
+                
                 # Shutdown pi function
 
             # button 1 (front right)
             if gpio.getDigital(8):
                 boo = False
                 print('Button 1 pressed')
-                button = 1
+                self.loop = False
                 # Stop Shutdown process
 
             # button 2 (side)
             if gpio.getDigital(12):
                 boo = False
                 print('Button 2 pressed')
-                button = 2
+                self.loop = False
                 # Stop Python script
+
+        t.join()
             
-        if button == None:
-            # Shutdown pi function
-            print('test')
+
 
     def mode_record(self):
         # Build record progress
         self._set_color_windmill_transition(color=(0,0,255,0))
         
-        t = Thread(target=self._set_color_pulsating, args=('blue', self.record_length+0.5,))
+        t = Thread(target=self._set_color_pulsating, args=((0,0,225,0), self.record_length+0.5,))
         t.start()
 
         self._record_audio()
-
+        t.join()
 
     def _set_color_static(self, color):
         led.set(color)
@@ -123,7 +127,6 @@ class Recorder():
         for x in range(int(time/sleep_len)):
             b = cos(pi/50*x*freq) * 0.4 + 0.4
             diodes = [(int(b*color[0]),int(b*color[1]),int(b*color[2]),int(b*color[3]))] * led.length
-            print(diodes)
             led.set(diodes)
             sleep(sleep_len)            
 
@@ -137,6 +140,9 @@ class Recorder():
             sleep(step_time)
             diodes[diode] = 'black'
             led.set(diodes)
+
+            if not self.loop:
+                return
 
     def _set_color_windmill_transition(self, color):
         def linear_gradient(x, shift=0):
@@ -189,7 +195,6 @@ class Recorder():
             diodes[4] = c_5
             diodes[13] = c_5
             
-            print(diodes)
             led.set(diodes)
 
     def _get_button_input(self):
@@ -212,9 +217,12 @@ class Recorder():
 
     def _set_filename_number(self):
         # recording_2.wav
-        latest_file = sorted(os.listdir(self.path))[-1]
+        files = sorted(os.listdir(self.path))
+        if len(files):
+            number = int(files[-1].rsplit('.')[0].rsplit('_')[1]) + 1
+        else:
+            number = 0
 
-        number = int(latest_file.rsplit('.')[0].rsplit('_')[1]) + 1
         self.filename = f"recording_{number}.wav"
 
     def _record_audio(self):
@@ -226,7 +234,7 @@ class Recorder():
         self.record_length
 
         self._set_filename_number()
-
+        print(self.filename)
         # create & configure microphone
         mic = pyaudio.PyAudio()
         stream = mic.open(format=format,
@@ -245,7 +253,8 @@ class Recorder():
         stream.close()
         mic.terminate()
 
-        outputFile = wave.open(self.filename, 'wb')
+        print("save file")
+        outputFile = wave.open(os.path.join(self.path, self.filename), 'wb')
         outputFile.setnchannels(channels)
         outputFile.setsampwidth(mic.get_sample_size(format))
         outputFile.setframerate(self.sample_rate)
@@ -254,7 +263,4 @@ class Recorder():
 
 if __name__ == "__main__":
     r = Recorder()
-    r.activate()
-    # r._set_color_pulsating((0,0,255,0),3)
-    # r._set_color_static('black')
-        
+    r.activate()        
