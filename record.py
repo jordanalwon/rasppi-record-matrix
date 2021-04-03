@@ -27,6 +27,8 @@ class Recorder():
         self.sample_rate = sample_rate
         self.debug_mode = debug_mode
 
+        self.path = os.path.join(os.path.dirname(os.path.realpath(__file__)),'Recordings')
+
         self._init_pins()
 
     def _init_pins(self):
@@ -50,7 +52,7 @@ class Recorder():
 
     def mode_standby(self):
         # Standby: Waiting for button input
-        self.set_static_color('green')
+        self._set_color_static('green')
 
         pressed_button = self._get_button_input()
 
@@ -115,7 +117,15 @@ class Recorder():
         led.set(color)
 
     def _set_color_pulsating(self,color,time):
-        pass
+        
+        sleep_len = 0.01
+        freq = 0.4
+        for x in range(int(time/sleep_len)):
+            b = cos(pi/50*x*freq) * 0.4 + 0.4
+            diodes = [(int(b*color[0]),int(b*color[1]),int(b*color[2]),int(b*color[3]))] * led.length
+            print(diodes)
+            led.set(diodes)
+            sleep(sleep_len)            
 
     def _set_color_decreasing_steps(self,color,time):
         #
@@ -201,7 +211,11 @@ class Recorder():
                 return 2
 
     def _set_filename_number(self):
-        pass
+        # recording_2.wav
+        latest_file = sorted(os.listdir(self.path))[-1]
+
+        number = int(latest_file.rsplit('.')[0].rsplit('_')[1]) + 1
+        self.filename = f"recording_{number}.wav"
 
     def _record_audio(self):
         # recording configs
@@ -240,7 +254,7 @@ class Recorder():
 
 if __name__ == "__main__":
     r = Recorder()
-    # r.activate()
-    r._set_color_windmill_transition((0,0,255,0))
-    r._set_color_static('black')
+    r.activate()
+    # r._set_color_pulsating((0,0,255,0),3)
+    # r._set_color_static('black')
         
