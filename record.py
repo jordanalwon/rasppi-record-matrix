@@ -30,10 +30,13 @@ class Recorder():
         self.path = os.path.join(os.path.dirname(os.path.realpath(__file__)),'Recordings')
         self.loop = True
 
+        self.copy_usb = False
+
         if not os.path.isdir(self.path):
             os.mkdir(self.path)
 
         self._init_pins()
+        self._init_flash_memory()
 
     def _init_pins(self):
         # Initalize button pin connection
@@ -45,7 +48,9 @@ class Recorder():
 
     def _init_flash_memory(self):
         # Initalize the USB memory and update the file directory 
-        pass
+        if os.path.ismount("/media/usb"):
+            print("USB Drive recognized")
+            self.copy_usb = True
 
     def activate(self):
         # Loop operation procedure
@@ -260,6 +265,10 @@ class Recorder():
         outputFile.setframerate(self.sample_rate)
         outputFile.writeframes(b''.join(frames))
         outputFile.close()
+
+        if self.copy_usb:
+            print(self.filename)
+            os.popen(f"sudo cp {os.path.join(self.path, self.filename)} /media/usb/{self.filename}")
 
 if __name__ == "__main__":
     r = Recorder()
